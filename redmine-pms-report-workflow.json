@@ -1,0 +1,800 @@
+{
+  "name": "Redmine PMS Daily Report",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000020",
+      "name": "Schedule Morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 17 * * 5"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000021",
+      "name": "Schedule Friday PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 트리거 타입에 따른 기준일(TODAY) 결정\n// - Manual: 오늘\n// - Schedule Morning (08:00): 어제 (D-1)\n// - Schedule Friday PM (17:00): 오늘 (금요일)\n\n// 한국 시간대 적용\nfunction getKSTDate(date = new Date()) {\n  const kstOffset = 9 * 60;\n  return new Date(date.getTime() + (kstOffset + date.getTimezoneOffset()) * 60000);\n}\n\nfunction formatDate(date) {\n  const yyyy = date.getFullYear();\n  const mm = String(date.getMonth() + 1).padStart(2, '0');\n  const dd = String(date.getDate()).padStart(2, '0');\n  return `${yyyy}-${mm}-${dd}`;\n}\n\nfunction formatShortDate(date) {\n  const yyyy = date.getFullYear();\n  const mm = String(date.getMonth() + 1).padStart(2, '0');\n  const dd = String(date.getDate()).padStart(2, '0');\n  return `${String(yyyy).slice(2)}/${mm}/${dd}`;\n}\n\nfunction isWeekend(date) {\n  const day = date.getDay();\n  return day === 0 || day === 6; // 일(0), 토(6)\n}\n\n// 트리거 타입 판별\nlet triggerType = 'manual';\n\n// 입력 데이터로 트리거 타입 판별\nconst inputData = $input.first()?.json || {};\nif (inputData._scheduleTrigger === 'morning') {\n  triggerType = 'morning';\n} else if (inputData._scheduleTrigger === 'friday_pm') {\n  triggerType = 'friday_pm';\n} else {\n  // 노드 이름으로 판별 시도\n  try {\n    $('Schedule Morning').first();\n    triggerType = 'morning';\n  } catch (e1) {\n    try {\n      $('Schedule Friday PM').first();\n      triggerType = 'friday_pm';\n    } catch (e2) {\n      triggerType = 'manual';\n    }\n  }\n}\n\nconst now = getKSTDate();\nconst currentHour = now.getHours();\n\n// 수동 트리거가 아닌 경우, 시간대로 추가 판별\nif (triggerType !== 'manual') {\n  if (currentHour >= 12) {\n    triggerType = 'friday_pm';\n  } else {\n    triggerType = 'morning';\n  }\n}\n\n// 기준일 계산\nlet baseDate;\nif (triggerType === 'manual') {\n  baseDate = now;\n} else if (triggerType === 'friday_pm') {\n  baseDate = now;\n} else {\n  baseDate = new Date(now);\n  baseDate.setDate(baseDate.getDate() - 1);\n}\n\nconst TODAY = formatDate(baseDate);\nconst TODAY_SHORT = formatShortDate(baseDate);\n\n// 스킵 조건: 스케줄 트리거 + 기준일이 주말\nlet shouldRun = true;\nlet skipReason = '';\n\nif (triggerType !== 'manual' && isWeekend(baseDate)) {\n  shouldRun = false;\n  skipReason = `기준일(${TODAY})이 주말입니다.`;\n}\n\nreturn [{\n  json: {\n    triggerType,\n    TODAY,\n    TODAY_SHORT,\n    TODAY_DISPLAY: TODAY,\n    shouldRun,\n    skipReason,\n    executionTime: formatDate(now) + ' ' + now.toTimeString().slice(0, 5)\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000022",
+      "name": "Determine Base Date",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "condition-should-run",
+              "leftValue": "={{ $json.shouldRun }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000023",
+      "name": "Should Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0001-0001-0001-000000000100",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 에러 정보 추출 및 포맷팅\nconst errorData = $input.first().json;\n\n// 에러 발생 시간\nconst now = new Date();\nconst timestamp = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });\n\n// 에러 정보 추출\nconst execution = errorData.execution || {};\nconst workflow = errorData.workflow || {};\nconst error = execution.error || {};\n\n// 실패한 노드 정보\nlet failedNode = 'Unknown';\nlet errorMessage = error.message || 'Unknown error';\nlet errorStack = '';\n\n// 실행 데이터에서 실패한 노드 찾기\nif (execution.data && execution.data.resultData) {\n  const runData = execution.data.resultData.runData || {};\n  const lastNodeExecuted = execution.data.resultData.lastNodeExecuted;\n  \n  if (lastNodeExecuted) {\n    failedNode = lastNodeExecuted;\n  }\n  \n  // 에러 상세 정보\n  if (error.stack) {\n    errorStack = error.stack.substring(0, 500); // 스택 트레이스 500자 제한\n  }\n}\n\n// 에러 유형 분류\nlet errorType = '일반 오류';\nif (errorMessage.includes('login') || errorMessage.includes('Login') || errorMessage.includes('session') || errorMessage.includes('cookie')) {\n  errorType = '로그인 실패';\n} else if (errorMessage.includes('CSRF') || errorMessage.includes('token')) {\n  errorType = 'CSRF 토큰 오류';\n} else if (errorMessage.includes('Notion') || errorMessage.includes('notion')) {\n  errorType = 'Notion API 오류';\n} else if (errorMessage.includes('Slack') || errorMessage.includes('slack')) {\n  errorType = 'Slack API 오류';\n} else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {\n  errorType = '타임아웃 오류';\n} else if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED')) {\n  errorType = '네트워크 오류';\n}\n\n// Slack 메시지 포맷\nconst slackMessage = `🚨 *PMS 일일 리포트 워크플로우 실패*\n\n*발생 시간:* ${timestamp}\n*에러 유형:* ${errorType}\n*실패 노드:* ${failedNode}\n*워크플로우:* ${workflow.name || 'Redmine PMS Daily Report'}\n\n*에러 메시지:*\n\\`\\`\\`\n${errorMessage}\n\\`\\`\\`\n${errorStack ? `\n*스택 트레이스:*\n\\`\\`\\`\n${errorStack}\n\\`\\`\\`` : ''}`;\n\nreturn [{\n  json: {\n    channel: '#pms',\n    slackMessage,\n    errorType,\n    failedNode,\n    errorMessage,\n    timestamp\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000101",
+      "name": "Format Error Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "={{ $json.slackMessage }}",
+        "otherOptions": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000102",
+      "name": "Send Error to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        600
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "SLACK_CREDENTIAL_ID",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 환경변수에서 설정값 가져오기\nconst REDMINE_BASE_URL = $env.REDMINE_BASE_URL || 'http://idc.watchtek.co.kr:8188/redmine';\nconst REDMINE_USERNAME = $env.REDMINE_USERNAME || '';\nconst REDMINE_PASSWORD = $env.REDMINE_PASSWORD || '';\nconst NOTION_DATABASE_ID = $env.NOTION_DATABASE_ID || '';\n\n// Determine Base Date 노드에서 기준일 가져오기\nconst baseData = $input.first().json;\nconst TODAY = baseData.TODAY;\nconst TODAY_SHORT = baseData.TODAY_SHORT;\nconst TODAY_DISPLAY = baseData.TODAY_DISPLAY;\nconst triggerType = baseData.triggerType;\n\nreturn [{\n  json: {\n    REDMINE_BASE_URL,\n    REDMINE_USERNAME,\n    REDMINE_PASSWORD,\n    NOTION_DATABASE_ID,\n    TODAY,\n    TODAY_DISPLAY,\n    TODAY_SHORT,\n    triggerType,\n    SLACK_CHANNELS: ['#pms'],\n    PROJECTS: [\n      {\n        name: '결함',\n        url: `${REDMINE_BASE_URL}/projects/dcim_adv/issues?query_id=1477&per_page=100`\n      },\n      {\n        name: '신규기능개발',\n        url: `${REDMINE_BASE_URL}/projects/dcim_adv/issues?query_id=1478&per_page=100`\n      },\n      {\n        name: 'KT cloud',\n        url: `${REDMINE_BASE_URL}/projects/dcim_adv/issues?query_id=1486&per_page=100`\n      },\n      {\n        name: '애플망고-사이트지원',\n        url: `${REDMINE_BASE_URL}/projects/applemango_site/issues?per_page=100&query_id=1087`\n      },\n      {\n        name: '애플망고-결함처리',\n        url: `${REDMINE_BASE_URL}/projects/release_issues_applemango/issues?query_id=1049&per_page=100`\n      }\n    ]\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000002",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.REDMINE_BASE_URL }}/login",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000003",
+      "name": "Get Login Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 로그인 페이지에서 CSRF 토큰과 쿠키 추출\nconst inputData = $input.first().json;\n\n// n8n fullResponse 옵션 사용 시 다양한 응답 구조 처리\nlet html = '';\nlet headers = {};\n\nif (typeof inputData === 'string') {\n  html = inputData;\n} else if (inputData.body) {\n  html = inputData.body;\n  headers = inputData.headers || {};\n} else if (inputData.data) {\n  html = inputData.data;\n  headers = inputData.headers || {};\n} else {\n  // 응답 구조 디버깅용\n  throw new Error('Unexpected response structure: ' + JSON.stringify(Object.keys(inputData)));\n}\n\n// authenticity_token 추출 (실제 Redmine HTML 구조에 맞춤)\n// <input name=\"authenticity_token\" type=\"hidden\" value=\"...\" />\nconst tokenMatch = html.match(/name=\"authenticity_token\"[^>]*value=\"([^\"]+)\"/);\nconst csrfToken = tokenMatch ? tokenMatch[1] : '';\n\nif (!csrfToken) {\n  throw new Error('CSRF token not found in login page');\n}\n\n// Set-Cookie 헤더에서 쿠키 추출\nlet cookies = '';\nif (headers['set-cookie']) {\n  const cookieArray = Array.isArray(headers['set-cookie']) \n    ? headers['set-cookie'] \n    : [headers['set-cookie']];\n  cookies = cookieArray.map(c => c.split(';')[0]).join('; ');\n}\n\n// 이전 노드 데이터 가져오기\nconst prevData = $('Set Config').first().json;\n\nreturn [{\n  json: {\n    csrfToken,\n    cookies,\n    REDMINE_BASE_URL: prevData.REDMINE_BASE_URL,\n    REDMINE_USERNAME: prevData.REDMINE_USERNAME,\n    REDMINE_PASSWORD: prevData.REDMINE_PASSWORD,\n    NOTION_DATABASE_ID: prevData.NOTION_DATABASE_ID,\n    TODAY: prevData.TODAY,\n    TODAY_DISPLAY: prevData.TODAY_DISPLAY,\n    TODAY_SHORT: prevData.TODAY_SHORT,\n    SLACK_CHANNELS: prevData.SLACK_CHANNELS,\n    PROJECTS: prevData.PROJECTS\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000004",
+      "name": "Extract CSRF Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.REDMINE_BASE_URL }}/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cookie",
+              "value": "={{ $json.cookies }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "utf8",
+              "value": "✓"
+            },
+            {
+              "name": "authenticity_token",
+              "value": "={{ $json.csrfToken }}"
+            },
+            {
+              "name": "username",
+              "value": "={{ $json.REDMINE_USERNAME }}"
+            },
+            {
+              "name": "password",
+              "value": "={{ $json.REDMINE_PASSWORD }}"
+            },
+            {
+              "name": "login",
+              "value": "로그인 »"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000005",
+      "name": "Login to Redmine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 로그인 후 세션 쿠키 추출\nconst response = $input.first().json;\nconst headers = response.headers || {};\nconst statusCode = response.statusCode;\nconst prevData = $('Extract CSRF Token').first().json;\n\n// 로그인 성공 시 302 리다이렉트 발생\nif (statusCode !== 302) {\n  throw new Error(`Login failed: Expected 302 redirect, got ${statusCode}`);\n}\n\n// 로그인 후 새로 발급된 세션 쿠키만 사용 (이전 쿠키 무시)\nlet sessionCookies = '';\n\nif (headers['set-cookie']) {\n  const cookieArray = Array.isArray(headers['set-cookie']) \n    ? headers['set-cookie'] \n    : [headers['set-cookie']];\n  sessionCookies = cookieArray.map(c => c.split(';')[0]).join('; ');\n}\n\nif (!sessionCookies) {\n  throw new Error('No session cookie received after login');\n}\n\nreturn [{\n  json: {\n    sessionCookies,\n    PROJECTS: prevData.PROJECTS,\n    TODAY: prevData.TODAY,\n    TODAY_DISPLAY: prevData.TODAY_DISPLAY,\n    TODAY_SHORT: prevData.TODAY_SHORT,\n    REDMINE_BASE_URL: prevData.REDMINE_BASE_URL,\n    NOTION_DATABASE_ID: prevData.NOTION_DATABASE_ID,\n    SLACK_CHANNELS: prevData.SLACK_CHANNELS\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000006",
+      "name": "Extract Session Cookies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 프로젝트 목록을 개별 아이템으로 분리\nconst data = $input.first().json;\nconst projects = data.PROJECTS;\n\nreturn projects.map(project => ({\n  json: {\n    projectName: project.name,\n    projectUrl: project.url,\n    sessionCookies: data.sessionCookies,\n    TODAY: data.TODAY,\n    TODAY_SHORT: data.TODAY_SHORT,\n    REDMINE_BASE_URL: data.REDMINE_BASE_URL,\n    NOTION_DATABASE_ID: data.NOTION_DATABASE_ID,\n    SLACK_CHANNELS: data.SLACK_CHANNELS,\n    TODAY_DISPLAY: data.TODAY_DISPLAY\n  }\n}));"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000007",
+      "name": "Split Projects",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.projectUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cookie",
+              "value": "={{ $json.sessionCookies }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000008",
+      "name": "Get Issues Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// HTML 파싱하여 이슈 데이터 추출\nconst allInputItems = $input.all();\nconst allProjectItems = $('Split Projects').all();\n\nconst results = [];\n\nfor (let idx = 0; idx < allInputItems.length; idx++) {\n  const inputData = allInputItems[idx].json;\n  const projectData = allProjectItems[idx]?.json || {};\n  \n  // fullResponse 응답 구조 처리\n  let html = '';\n  if (typeof inputData === 'string') {\n    html = inputData;\n  } else if (inputData.data) {\n    html = inputData.data;\n  } else if (inputData.body) {\n    html = inputData.body;\n  } else {\n    continue;\n  }\n  \n  const issues = [];\n  \n  // 이슈 ID 추출\n  const issueIdRegex = /<tr[^>]*id=\"issue-(\\d+)\"[^>]*>/gi;\n  const issueIds = [];\n  let idMatch;\n  while ((idMatch = issueIdRegex.exec(html)) !== null) {\n    issueIds.push(idMatch[1]);\n  }\n  \n  // 각 필드별로 모든 값 추출\n  const extractAll = (regex) => {\n    const matches = [];\n    let match;\n    while ((match = regex.exec(html)) !== null) {\n      matches.push(match[1] ? match[1].trim() : '');\n    }\n    return matches;\n  };\n  \n  // 공통 컬럼 추출\n  const subjects = extractAll(/<td class=\"subject\"><a[^>]*>([\\s\\S]*?)<\\/a><\\/td>/gi);\n  const statuses = extractAll(/<td class=\"status\">([^<]*)<\\/td>/gi);\n  const priorities = extractAll(/<td class=\"priority\">([^<]*)<\\/td>/gi);\n  const dueDates = extractAll(/<td class=\"due_date\"[^>]*>([^<]*)<\\/td>/gi);\n  const createdOns = extractAll(/<td class=\"created_on\"[^>]*>([^<]*)<\\/td>/gi);\n  const cf44s = extractAll(/<td class=\"cf_44[^\"]*\"[^>]*>([^<]*)<\\/td>/gi);\n  const closedOns = extractAll(/<td class=\"closed_on\"[^>]*>([^<]*)<\\/td>/gi);\n  const startDates = extractAll(/<td class=\"start_date\"[^>]*>([^<]*)<\\/td>/gi);\n  \n  // 담당자 추출\n  const assignedTos = [];\n  const assignedToRegex = /<td class=\"assigned_to\"[^>]*>([\\s\\S]*?)<\\/td>/gi;\n  let assignedMatch;\n  while ((assignedMatch = assignedToRegex.exec(html)) !== null) {\n    const content = assignedMatch[1];\n    const linkMatch = content.match(/<a[^>]*>([^<]*)<\\/a>/);\n    assignedTos.push(linkMatch ? linkMatch[1].trim() : (content.trim() || '미배정'));\n  }\n  \n  // 진척도 추출\n  const progresses = extractAll(/class=\"progress progress-(\\d+)\"/gi);\n  \n  // 이슈 객체 생성\n  for (let i = 0; i < issueIds.length; i++) {\n    let completedDate = cf44s[i] || closedOns[i] || '';\n    \n    const issue = {\n      '#': issueIds[i],\n      'url': `http://idc.watchtek.co.kr:8188/redmine/issues/${issueIds[i]}`,\n      '제목': subjects[i] || '',\n      '상태': statuses[i] || '',\n      '우선순위': priorities[i] || '',\n      '담당자': assignedTos[i] || '미배정',\n      '완료기한': dueDates[i] || '',\n      '등록': createdOns[i] || '',\n      '완료일': completedDate,\n      '진척도': progresses[i] ? parseInt(progresses[i]) : 0,\n      '시작시간': startDates[i] || ''\n    };\n    issues.push(issue);\n  }\n  \n  results.push({\n    json: {\n      projectName: projectData.projectName,\n      projectUrl: projectData.projectUrl,\n      issues,\n      totalItems: issues.length,\n      sessionCookies: projectData.sessionCookies,\n      TODAY: projectData.TODAY,\n      TODAY_SHORT: projectData.TODAY_SHORT,\n      REDMINE_BASE_URL: projectData.REDMINE_BASE_URL,\n      NOTION_DATABASE_ID: projectData.NOTION_DATABASE_ID,\n      SLACK_CHANNELS: projectData.SLACK_CHANNELS,\n      TODAY_DISPLAY: projectData.TODAY_DISPLAY\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000009",
+      "name": "Parse Issues HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 이슈 분류: 신규, 처리완료, 처리중, 잔여\nconst allItems = $input.all();\nconst results = [];\n\n// 완료/종료 상태 목록 (처리중에서 제외)\nconst CLOSED_STATUSES = [\n  '처리 완료',\n  '처리 반려',\n  '종료 [해결]',\n  '종료 [미해결]',\n  '종료 [폐기]',\n  '종료 [테스트오류]'\n];\n\nfor (let idx = 0; idx < allItems.length; idx++) {\n  const data = allItems[idx].json;\n  const issues = data.issues || [];\n  const today = data.TODAY;\n  \n  function normalizeDate(dateStr) {\n    if (!dateStr) return '';\n    const datePart = dateStr.split(' ')[0];\n    return datePart.replace(/\\//g, '-');\n  }\n  \n  function toShortDate(dateStr) {\n    if (!dateStr) return '-';\n    const normalized = normalizeDate(dateStr);\n    if (!normalized) return '-';\n    const parts = normalized.split('-');\n    if (parts.length === 3) {\n      return `${parts[0].slice(-2)}/${parts[1]}/${parts[2]}`;\n    }\n    return dateStr;\n  }\n  \n  function isClosedStatus(status) {\n    return CLOSED_STATUSES.some(s => status.includes(s) || s.includes(status));\n  }\n  \n  const classified = {\n    신규: [],\n    처리완료: [],\n    처리중: [],\n    잔여: []\n  };\n  \n  const REDMINE_BASE = 'http://idc.watchtek.co.kr:8188/redmine/issues/';\n  \n  issues.forEach((issue) => {\n    const registeredDate = normalizeDate(issue['등록']);\n    const completedDate = normalizeDate(issue['완료일']);\n    const progress = issue['진척도'] || 0;\n    const status = issue['상태'] || '';\n    \n    const issueData = {\n      id: issue['#'],\n      url: `${REDMINE_BASE}${issue['#']}`,\n      제목: issue['제목'],\n      우선순위: issue['우선순위'],\n      담당자: issue['담당자'],\n      완료기한: toShortDate(issue['완료기한']),\n      완료일: toShortDate(issue['완료일']),\n      상태: status,\n      진척도: progress\n    };\n    \n    // 1. 신규: 기준일에 등록된 이슈\n    if (registeredDate === today) {\n      classified.신규.push(issueData);\n    }\n    // 2. 처리완료: 기준일에 완료 + 종료 상태\n    else if (completedDate === today && isClosedStatus(status)) {\n      classified.처리완료.push(issueData);\n    }\n    // 3. 처리중: 완료일 없음 + 진척도 10~79% + 종료 상태 아님\n    else if (!completedDate && progress >= 10 && progress < 80 && !isClosedStatus(status)) {\n      classified.처리중.push(issueData);\n    }\n    // 4. 잔여: 진척도 80% 미만\n    else if (progress < 80) {\n      classified.잔여.push(issueData);\n    }\n  });\n  \n  results.push({\n    json: {\n      projectName: data.projectName,\n      classified,\n      counts: {\n        신규: classified.신규.length,\n        처리완료: classified.처리완료.length,\n        처리중: classified.처리중.length,\n        잔여: classified.잔여.length\n      },\n      TODAY: data.TODAY,\n      TODAY_SHORT: data.TODAY_SHORT,\n      TODAY_DISPLAY: data.TODAY_DISPLAY,\n      NOTION_DATABASE_ID: data.NOTION_DATABASE_ID,\n      SLACK_CHANNELS: data.SLACK_CHANNELS\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000010",
+      "name": "Classify Issues",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {
+          "destinationFieldName": "projectsData"
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000011",
+      "name": "Aggregate Projects",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 전체 프로젝트 데이터를 Notion API 형식으로 변환\n// Notion API 제한: children 최대 100개 → 페이지 생성 후 append로 추가\nconst MAX_BLOCKS_PER_REQUEST = 100;\n\nconst allItems = $input.all();\n\nlet projectsData = [];\n\n// Aggregate 노드 출력 처리\nif (allItems.length > 0) {\n  const firstItem = allItems[0].json;\n  \n  if (Array.isArray(firstItem.data)) {\n    projectsData = firstItem.data;\n  } else if (Array.isArray(firstItem.projectsData)) {\n    projectsData = firstItem.projectsData;\n  } else if (firstItem.projectName) {\n    projectsData = allItems.map(item => item.json);\n  } else {\n    for (const key of Object.keys(firstItem)) {\n      if (Array.isArray(firstItem[key]) && firstItem[key].length > 0) {\n        const sample = firstItem[key][0];\n        if (sample && sample.projectName) {\n          projectsData = firstItem[key];\n          break;\n        }\n      }\n    }\n  }\n}\n\nif (projectsData.length === 0) {\n  throw new Error('No project data found. Check Aggregate node output.');\n}\n\nconst today = projectsData[0]?.TODAY_DISPLAY || new Date().toISOString().split('T')[0];\nconst notionDbId = projectsData[0]?.NOTION_DATABASE_ID;\nconst slackChannels = projectsData[0]?.SLACK_CHANNELS;\n\n/**\n * 이슈를 텍스트로 포맷\n */\nfunction formatIssue(issue, includeCompleted = false, includeAssignee = true) {\n  let line = `#${issue.id} [${issue.우선순위}] ${issue.제목} (${issue.완료기한})`;\n  if (includeCompleted && issue.완료일 && issue.완료일 !== '-') {\n    line += ` 완료:${issue.완료일}`;\n  }\n  if (includeAssignee) {\n    line += ` - ${issue.담당자}`;\n  }\n  return line;\n}\n\n/**\n * Notion rich_text 배열 생성\n */\nfunction createRichText(text) {\n  return [{ type: 'text', text: { content: text } }];\n}\n\n/**\n * Notion bulleted_list_item 블록 생성\n */\nfunction createBulletItem(text, url = null) {\n  const richText = url \n    ? [{ type: 'text', text: { content: text, link: { url: url } } }]\n    : [{ type: 'text', text: { content: text } }];\n  \n  return {\n    object: 'block',\n    type: 'bulleted_list_item',\n    bulleted_list_item: { rich_text: richText }\n  };\n}\n\n/**\n * 이슈 목록을 bullet 블록 배열로 변환 (모든 이슈 포함)\n */\nfunction createIssueBlocks(issues, includeCompleted = false, includeAssignee = true) {\n  if (!issues || issues.length === 0) {\n    return [createBulletItem('(없음)')];\n  }\n  \n  return issues.map(issue => {\n    const text = formatIssue(issue, includeCompleted, includeAssignee);\n    return createBulletItem(text, issue.url);\n  });\n}\n\n// 모든 Notion children 블록 수집\nlet allChildren = [];\n\n// Slack 요약 (먼저 수집)\nlet slackSummary = [];\nprojectsData.forEach((project) => {\n  const { projectName, counts } = project;\n  if (counts) {\n    slackSummary.push(`• ${projectName}: 신규 ${counts.신규}건 / 완료 ${counts.처리완료}건 / 처리중 ${counts.처리중}건 / 잔여 ${counts.잔여}건`);\n  }\n});\n\n// 페이지 상단에 요약 추가\nallChildren.push({\n  object: 'block',\n  type: 'callout',\n  callout: {\n    rich_text: createRichText(slackSummary.join('\\n')),\n    icon: { type: 'emoji', emoji: '📊' },\n    color: 'gray_background'\n  }\n});\n\n// 구분선\nallChildren.push({\n  object: 'block',\n  type: 'divider',\n  divider: {}\n});\n\nprojectsData.forEach((project, idx) => {\n  const { projectName, classified, counts } = project;\n  \n  if (!classified || !counts) {\n    return;\n  }\n  \n  // 프로젝트 헤딩 (heading_2)\n  allChildren.push({\n    object: 'block',\n    type: 'heading_2',\n    heading_2: {\n      rich_text: createRichText(`${projectName} (신규 ${counts.신규}건, 완료 ${counts.처리완료}건, 처리중 ${counts.처리중}건, 잔여 ${counts.잔여}건)`)\n    }\n  });\n  \n  // 신규 섹션 (있을 때만 상세 표시)\n  if (counts.신규 > 0) {\n    allChildren.push({\n      object: 'block',\n      type: 'heading_3',\n      heading_3: { rich_text: createRichText('📋 신규') }\n    });\n    allChildren.push(...createIssueBlocks(classified.신규, false, true));\n  }\n  \n  // 처리 완료 섹션 (있을 때만 상세 표시)\n  if (counts.처리완료 > 0) {\n    allChildren.push({\n      object: 'block',\n      type: 'heading_3',\n      heading_3: { rich_text: createRichText('✅ 처리 완료') }\n    });\n    allChildren.push(...createIssueBlocks(classified.처리완료, true, true));\n  }\n  \n  // 처리 중 섹션 (있을 때만 상세 표시)\n  if (counts.처리중 > 0) {\n    allChildren.push({\n      object: 'block',\n      type: 'heading_3',\n      heading_3: { rich_text: createRichText('🔄 처리 중') }\n    });\n    allChildren.push(...createIssueBlocks(classified.처리중, false, true));\n  }\n  \n  // 잔여 섹션 (있을 때만 상세 표시)\n  if (counts.잔여 > 0) {\n    allChildren.push({\n      object: 'block',\n      type: 'heading_3',\n      heading_3: { rich_text: createRichText('📝 잔여') }\n    });\n    allChildren.push(...createIssueBlocks(classified.잔여, false, true));\n  }\n  \n  // 구분선 (마지막 프로젝트가 아닌 경우)\n  if (idx < projectsData.length - 1) {\n    allChildren.push({\n      object: 'block',\n      type: 'divider',\n      divider: {}\n    });\n  }\n});\n\n// 블록을 100개씩 청크로 분할\nconst childrenChunks = [];\nfor (let i = 0; i < allChildren.length; i += MAX_BLOCKS_PER_REQUEST) {\n  childrenChunks.push(allChildren.slice(i, i + MAX_BLOCKS_PER_REQUEST));\n}\n\n// 첫 번째 청크는 페이지 생성 시 사용, 나머지는 append용\nconst firstChunk = childrenChunks[0] || [];\nconst appendChunks = childrenChunks.slice(1);\n\n// Notion API request body (페이지 생성용)\nconst notionBody = {\n  parent: { database_id: notionDbId },\n  icon: {\n    type: 'emoji',\n    emoji: '⛔'\n  },\n  properties: {\n    Name: { title: [{ text: { content: `[PMS 일일 리포트] ${today}` } }] },\n    Date: { date: { start: today } },\n    Tags: { select: { name: 'PMS' } }\n  },\n  children: firstChunk\n};\n\nreturn [{\n  json: {\n    pageTitle: `[PMS 일일 리포트] ${today}`,\n    notionBody: notionBody,\n    appendChunks: appendChunks,\n    slackSummary: slackSummary.join('\\n'),\n    today,\n    NOTION_DATABASE_ID: notionDbId,\n    SLACK_CHANNELS: slackChannels\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000012",
+      "name": "Generate Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notionBody) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000013",
+      "name": "Create Notion Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 페이지 생성 후 추가 블록 append 준비\nconst notionResponse = $input.first().json;\nconst reportData = $('Generate Report').first().json;\n\nconst pageId = notionResponse.id;\nconst appendChunks = reportData.appendChunks || [];\n\nif (appendChunks.length === 0) {\n  return [{\n    json: {\n      pageId,\n      pageUrl: notionResponse.url,\n      appendComplete: true,\n      slackSummary: reportData.slackSummary,\n      today: reportData.today,\n      SLACK_CHANNELS: reportData.SLACK_CHANNELS,\n      pageTitle: reportData.pageTitle\n    }\n  }];\n}\n\nreturn appendChunks.map((chunk, idx) => ({\n  json: {\n    pageId,\n    pageUrl: notionResponse.url,\n    chunkIndex: idx,\n    chunkTotal: appendChunks.length,\n    children: chunk,\n    slackSummary: reportData.slackSummary,\n    today: reportData.today,\n    SLACK_CHANNELS: reportData.SLACK_CHANNELS,\n    pageTitle: reportData.pageTitle\n  }\n}));"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000016",
+      "name": "Prepare Append Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "condition-append",
+              "leftValue": "={{ $json.children ? $json.children.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000017",
+      "name": "Has More Blocks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/blocks/{{ $json.pageId }}/children",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ children: $json.children }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000018",
+      "name": "Append Blocks to Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        200
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Append 완료 후 또는 Append 불필요 시 Slack 전송 준비\nconst allItems = $input.all();\n\n// 첫 번째 아이템에서 데이터 추출 (모두 동일한 페이지 정보)\nconst firstItem = allItems[0].json;\n\n// Prepare Append Chunks에서 온 데이터 또는 Append Blocks에서 온 데이터\nlet pageUrl, slackSummary, today, slackChannels, pageTitle;\n\nif (firstItem.pageUrl) {\n  // Prepare Append Chunks에서 직접 온 경우 (append 불필요)\n  pageUrl = firstItem.pageUrl;\n  slackSummary = firstItem.slackSummary;\n  today = firstItem.today;\n  slackChannels = firstItem.SLACK_CHANNELS;\n  pageTitle = firstItem.pageTitle;\n} else {\n  // Append Blocks 후 온 경우\n  const reportData = $('Generate Report').first().json;\n  const createResponse = $('Create Notion Page').first().json;\n  pageUrl = createResponse.url;\n  slackSummary = reportData.slackSummary;\n  today = reportData.today;\n  slackChannels = reportData.SLACK_CHANNELS;\n  pageTitle = reportData.pageTitle;\n}\n\nreturn slackChannels.map(channel => ({\n  json: {\n    channel,\n    slackSummary,\n    today,\n    notionPageUrl: pageUrl,\n    pageTitle\n  }\n}));"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000019",
+      "name": "Prepare Slack Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $json.channel }}"
+        },
+        "text": "=📋 *PMS 일일 리포트* ({{ $json.today }})\n\n{{ $json.slackSummary }}\n\n🔗 <{{ $json.notionPageUrl }}|상세 보기>",
+        "otherOptions": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000015",
+      "name": "Send Slack Message",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        3080,
+        300
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "SLACK_CREDENTIAL_ID",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Message": {
+      "main": [
+        [
+          {
+            "node": "Send Error to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Determine Base Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Morning": {
+      "main": [
+        [
+          {
+            "node": "Determine Base Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Friday PM": {
+      "main": [
+        [
+          {
+            "node": "Determine Base Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Base Date": {
+      "main": [
+        [
+          {
+            "node": "Should Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Run?": {
+      "main": [
+        [
+          {
+            "node": "Set Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Set Config": {
+      "main": [
+        [
+          {
+            "node": "Get Login Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Login Page": {
+      "main": [
+        [
+          {
+            "node": "Extract CSRF Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract CSRF Token": {
+      "main": [
+        [
+          {
+            "node": "Login to Redmine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login to Redmine": {
+      "main": [
+        [
+          {
+            "node": "Extract Session Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Session Cookies": {
+      "main": [
+        [
+          {
+            "node": "Split Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Projects": {
+      "main": [
+        [
+          {
+            "node": "Get Issues Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Issues Page": {
+      "main": [
+        [
+          {
+            "node": "Parse Issues HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Issues HTML": {
+      "main": [
+        [
+          {
+            "node": "Classify Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Issues": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Projects": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Create Notion Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Notion Page": {
+      "main": [
+        [
+          {
+            "node": "Prepare Append Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Append Chunks": {
+      "main": [
+        [
+          {
+            "node": "Has More Blocks?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has More Blocks?": {
+      "main": [
+        [
+          {
+            "node": "Append Blocks to Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Blocks to Page": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-12-07T00:00:00.000Z",
+  "versionId": "1"
+}
