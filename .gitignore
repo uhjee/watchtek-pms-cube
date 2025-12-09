@@ -56,3 +56,6 @@ pids/
 tmp/
 temp/
 *.tmp
+
+# PM2 config (contains secrets)
+ecosystem.config.js

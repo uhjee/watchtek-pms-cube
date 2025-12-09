@@ -66,6 +66,41 @@ environment:
   - NOTION_DATABASE_ID=your_database_id
 ```
 
+**PM2 사용 시 (Windows):**
+
+1. `ecosystem.config.js` 파일 생성:
+```javascript
+module.exports = {
+  apps: [{
+    name: 'n8n',
+    script: 'cmd.exe',
+    args: '/c n8n start',
+    interpreter: 'none',
+    autorestart: true,
+    max_memory_restart: '1G',
+    env: {
+      N8N_PORT: 5678,
+      GENERIC_TIMEZONE: 'Asia/Seoul',
+      TZ: 'Asia/Seoul',
+      REDMINE_BASE_URL: 'https://redmine.example.com',
+      REDMINE_USERNAME: 'your_username',
+      REDMINE_PASSWORD: 'your_password',
+      NOTION_DATABASE_ID: 'your_database_id',
+      SLACK_CHANNEL: '#pms',
+    }
+  }]
+};
+```
+
+2. PM2로 실행:
+```bash
+pm2 start ecosystem.config.js
+pm2 status
+pm2 logs n8n
+```
+
+> **주의**: `ecosystem.config.js`에는 민감한 정보가 포함되므로 `.gitignore`에 추가하세요.
+
 ### 3. n8n Credentials 설정
 
 #### Notion API

@@ -9,6 +9,7 @@ n8n 워크플로우를 통해 Redmine PMS에서 5개 프로젝트의 이슈를 �
 ## 주요 파일
 
 - `redmine-pms-report-workflow.json` - n8n 워크플로우 정의 파일
+- `ecosystem.config.js` - PM2 설정 파일 (환경변수 포함, .gitignore에 추가됨)
 
 ## 워크플로우 구조 (22개 노드)
 
@@ -127,6 +128,50 @@ REDMINE_BASE_URL    # Redmine 서버 URL
 REDMINE_USERNAME    # Redmine 계정
 REDMINE_PASSWORD    # Redmine 비밀번호
 NOTION_DATABASE_ID  # Notion 데이터베이스 ID
+```
+
+## PM2 실행 (Windows)
+
+### ecosystem.config.js 구조
+```javascript
+module.exports = {
+  apps: [{
+    name: 'n8n',
+    script: 'cmd.exe',
+    args: '/c n8n start',
+    interpreter: 'none',
+    env: {
+      // n8n 기본 설정
+      N8N_PORT: 5678,
+      GENERIC_TIMEZONE: 'Asia/Seoul',
+      TZ: 'Asia/Seoul',
+      // Redmine/Notion/Slack 환경변수
+      REDMINE_BASE_URL: '...',
+      REDMINE_USERNAME: '...',
+      REDMINE_PASSWORD: '...',
+      NOTION_DATABASE_ID: '...',
+      SLACK_CHANNEL: '#pms',
+    }
+  }]
+};
+```
+
+### PM2 명령어
+```bash
+# 시작
+pm2 start ecosystem.config.js
+
+# 상태 확인
+pm2 status
+
+# 로그 확인
+pm2 logs n8n
+
+# 재시작
+pm2 restart n8n
+
+# 중지 및 삭제
+pm2 delete n8n
 ```
 
 ## n8n Credentials 필요
