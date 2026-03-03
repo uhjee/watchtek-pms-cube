@@ -1,17 +1,27 @@
-# CLAUDE.md - Redmine PMS Daily Report Workflow
+# CLAUDE.md - Redmine PMS Report Workflow
 
 이 파일은 Claude의 다른 세션에서 이 프로젝트를 이해하기 위한 참고 문서입니다.
 
 ## 프로젝트 개요
 
-n8n 워크플로우를 통해 Redmine PMS에서 5개 프로젝트의 이슈를 크롤링하여 일일 리포트를 생성하고, Notion에 저장한 뒤 Slack으로 알림을 보내는 자동화 시스템입니다.
+n8n 워크플로우를 통해 Redmine PMS에서 5개 프로젝트의 이슈를 크롤링하여 일간/주간/월간 리포트를 생성하고, Notion에 저장한 뒤 Slack으로 알림을 보내는 자동화 시스템입니다.
 
 ## 주요 파일
 
-- `redmine-pms-report-workflow.json` - n8n 워크플로우 정의 파일
+- `redmine-pms-report-workflow.json` - 일간 리포트 워크플로우
+- `redmine-pms-weekly-report-workflow.json` - 주간 리포트 워크플로우
+- `redmine-pms-monthly-report-workflow.json` - 월간 리포트 워크플로우
 - `ecosystem.config.js` - PM2 설정 파일 (환경변수 포함, .gitignore에 추가됨)
 
-## 워크플로우 구조 (22개 노드)
+## 워크플로우 요약
+
+| 워크플로우 | 수행 시간 | 기준 기간 | Slack 채널 | Notion Tag |
+|-----------|----------|----------|------------|------------|
+| Daily | 08:00 매일, 17:00 금 | 단일 날짜 | #pms | PMS |
+| Weekly | 17:00 금요일 | 해당 주 월~금 | #pms-weekly | PMS-Weekly |
+| Monthly | 17:00 매월 말일 | 당월 1일~말일 | #pms-monthly | PMS-Monthly |
+
+## 일간 리포트 워크플로우 (Daily)
 
 ### 메인 플로우
 ```
@@ -28,14 +38,7 @@ Set Config → Get Login Page → Extract CSRF Token → Login to Redmine
 → Send Slack Message
 ```
 
-### 에러 처리 플로우
-```
-Error Trigger → Format Error Message → Send Error to Slack
-```
-
-## 스케줄링 로직
-
-### 트리거 타입별 기준일 (TODAY)
+### 스케줄링 로직
 
 | 트리거 | 수행 시간 | 기준일 (TODAY) | 비고 |
 |--------|----------|----------------|------|
@@ -47,6 +50,43 @@ Error Trigger → Format Error Message → Send Error to Slack
 - **주말**: 기준일이 토/일인 경우 스킵
 - 예: 월요일 08:00 → 기준일 일요일 → 스킵
 - 예: 토요일 08:00 → 기준일 금요일 → 정상 실행
+
+## 주간 리포트 워크플로우 (Weekly)
+
+### 스케줄
+- **수행일**: 매주 금요일 18:00
+- **기준 기간**: 해당 주 월요일 ~ 금요일
+- **Slack 채널**: #pms-weekly
+
+### 분류 기준
+- **신규**: 기준 기간 내 등록된 이슈
+- **처리완료**: 기준 기간 내 완료 + 종료 상태
+- **처리중/잔여**: 일간과 동일
+
+## 월간 리포트 워크플로우 (Monthly)
+
+### 스케줄
+- **수행일**: 매월 말일 17:00
+- **Cron**: `0 17 28-31 * *` (28-31일 17:00 실행, 노드에서 말일 체크)
+- **기준 기간**: 당월 1일 ~ 말일
+- **Slack 채널**: #pms-monthly
+
+### 말일 체크 로직
+- n8n cron은 `L` (Last day) 미지원
+- `0 17 28-31 * *`로 매월 28-31일 실행
+- `Determine Period` 노드에서 오늘이 실제 말일인지 체크
+- 말일이 아니면 `Should Run?` 노드에서 워크플로우 종료
+- Manual Trigger는 말일 체크 없이 항상 실행
+
+### 분류 기준
+- **신규**: 기준 기간 내 등록된 이슈
+- **처리완료**: 기준 기간 내 완료 + 종료 상태
+- **처리중/잔여**: 일간과 동일
+
+### 에러 처리 플로우 (공통)
+```
+Error Trigger → Format Error Message → Send Error to Slack
+```
 
 ## 핵심 노드 설명
 

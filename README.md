@@ -1,25 +1,36 @@
-# Redmine PMS Daily Report Workflow
+# Redmine PMS Report Workflow
 
-Redmine PMS 이슈를 자동으로 수집하여 일일 리포트를 생성하고, Notion에 저장한 뒤 Slack으로 알림을 보내는 n8n 워크플로우입니다.
+Redmine PMS 이슈를 자동으로 수집하여 일간/주간/월간 리포트를 생성하고, Notion에 저장한 뒤 Slack으로 알림을 보내는 n8n 워크플로우입니다.
 
 ## 기능
 
 - Redmine에서 5개 프로젝트의 이슈 자동 크롤링
 - 이슈를 4가지 카테고리로 자동 분류 (신규, 처리완료, 처리중, 잔여)
-- Notion 데이터베이스에 일일 리포트 페이지 생성
+- **일간/주간/월간** 리포트 자동 생성
+- Notion 데이터베이스에 리포트 페이지 생성
 - Slack 채널로 요약 알림 전송
 - 워크플로우 실패 시 Slack 에러 알림
 
+## 워크플로우 파일
+
+| 파일 | 설명 | 스케줄 | Slack 채널 |
+|------|------|--------|------------|
+| `redmine-pms-report-workflow.json` | 일간 리포트 | 08:00 매일, 17:00 금 | #pms |
+| `redmine-pms-weekly-report-workflow.json` | 주간 리포트 | 17:00 금요일 | #pms-weekly |
+| `redmine-pms-monthly-report-workflow.json` | 월간 리포트 | 17:00 매월 말일 | #pms-monthly |
+
 ## 이슈 분류 기준
 
-| 카테고리 | 조건 |
-|---------|------|
-| 신규 | 기준일에 등록된 이슈 |
-| 처리완료 | 기준일에 완료 + 종료 상태 |
-| 처리중 | 완료일 없음 + 진척도 10~79% + 종료 상태 아님 |
-| 잔여 | 위 조건에 해당 안 함 + 진척도 80% 미만 |
+| 카테고리 | 일간 | 주간/월간 |
+|---------|------|----------|
+| 신규 | 기준일에 등록된 이슈 | 기준 기간 내 등록된 이슈 |
+| 처리완료 | 기준일에 완료 + 종료 상태 | 기준 기간 내 완료 + 종료 상태 |
+| 처리중 | 완료일 없음 + 진척도 10~79% + 종료 상태 아님 | 동일 |
+| 잔여 | 위 조건에 해당 안 함 + 진척도 80% 미만 | 동일 |
 
 **종료 상태**: 처리 완료, 처리 반려, 종료 [해결], 종료 [미해결], 종료 [폐기], 종료 [테스트오류]
+
+**제외 조건**: 우선순위가 "개선"인 이슈는 모든 카테고리에서 제외
 
 ## 사전 요구사항
 
@@ -33,7 +44,10 @@ Redmine PMS 이슈를 자동으로 수집하여 일일 리포트를 생성하고
 ### 1. 워크플로우 가져오기
 
 1. n8n 대시보드에서 **Settings** > **Import from File** 선택
-2. `redmine-pms-report-workflow.json` 파일 업로드
+2. 다음 파일들을 각각 업로드:
+   - `redmine-pms-report-workflow.json` (일간)
+   - `redmine-pms-weekly-report-workflow.json` (주간)
+   - `redmine-pms-monthly-report-workflow.json` (월간)
 3. 워크플로우가 생성되면 **Inactive** 상태로 표시됨
 
 ### 2. 환경변수 설정
@@ -73,30 +87,52 @@ environment:
 module.exports = {
   apps: [{
     name: 'n8n',
-    script: 'cmd.exe',
-    args: '/c n8n start',
-    interpreter: 'none',
+    script: 'C:\\Program Files\\nodejs\\node_modules\\n8n\\bin\\n8n',
+    interpreter: 'node',
+    args: 'start',
     autorestart: true,
     max_memory_restart: '1G',
     env: {
       N8N_PORT: 5678,
+      N8N_HOST: '192.168.121.87',
       GENERIC_TIMEZONE: 'Asia/Seoul',
       TZ: 'Asia/Seoul',
+      N8N_USER_FOLDER: 'C:\\Users\\SAMSUNG\\.n8n',
       REDMINE_BASE_URL: 'https://redmine.example.com',
       REDMINE_USERNAME: 'your_username',
       REDMINE_PASSWORD: 'your_password',
       NOTION_DATABASE_ID: 'your_database_id',
       SLACK_CHANNEL: '#pms',
+      SLACK_CHANNEL_WEEKLY: '#pms-weekly',
+      SLACK_CHANNEL_MONTHLY: '#pms-monthly',
     }
   }]
 };
 ```
 
-2. PM2로 실행:
+2. PM2 명령어:
 ```bash
+# 시작
 pm2 start ecosystem.config.js
+
+# 상태 확인
 pm2 status
+
+# 로그 확인
 pm2 logs n8n
+
+# 재시작 (환경변수 변경 시)
+pm2 restart n8n --update-env
+
+# 중지
+pm2 stop n8n
+
+# 삭제 (프로세스 목록에서 제거)
+pm2 delete n8n
+
+# 시스템 재시작 시 자동 실행 설정
+pm2 save
+pm2 startup
 ```
 
 > **주의**: `ecosystem.config.js`에는 민감한 정보가 포함되므로 `.gitignore`에 추가하세요.
@@ -158,14 +194,23 @@ SLACK_CHANNELS: ['#your-channel']
 
 ### 자동 스케줄 실행
 
-워크플로우에는 자동 스케줄이 내장되어 있습니다:
-
+#### 일간 리포트
 | 스케줄 | 수행 시간 | 기준일 | 비고 |
 |--------|----------|--------|------|
 | 오전 리포트 | 매일 08:00 | 전일 (D-1) | 화~금 실행 |
 | 금요일 오후 | 금 17:00 | 당일 (금요일) | 금요일 추가 리포트 |
 
-### 자동 스킵 조건
+#### 주간 리포트
+| 스케줄 | 수행 시간 | 기준 기간 | Slack 채널 |
+|--------|----------|----------|------------|
+| 주간 리포트 | 금 17:00 | 해당 주 월~금 | #pms-weekly |
+
+#### 월간 리포트
+| 스케줄 | 수행 시간 | 기준 기간 | Slack 채널 |
+|--------|----------|----------|------------|
+| 월간 리포트 | 매월 말일 17:00 | 당월 1일~말일 | #pms-monthly |
+
+### 자동 스킵 조건 (일간만 해당)
 
 스케줄 실행 시 기준일이 **주말(토/일)**이면 자동으로 스킵됩니다.
 
